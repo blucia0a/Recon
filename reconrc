@@ -1,0 +1,10 @@
+#Pin installation
+export PIN=/sampa/share/pin/PIN/pin
+
+#Recon installation
+export RECON=../ReconCollect/C/recon.so
+
+#libjson install location
+LIBJSON=../ReconCollect/libs/libjson/inst/lib 
+
+export LD_LIBRARY_PATH=$LIBJSON

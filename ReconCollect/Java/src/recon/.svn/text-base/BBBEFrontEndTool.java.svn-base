@@ -1,0 +1,94 @@
+package bugaboo;
+
+import rr.RRMain;
+import rr.annotations.Abbrev;
+import rr.event.AccessEvent;
+import rr.event.ArrayAccessEvent;
+import rr.event.FieldAccessEvent;
+import rr.event.NewThreadEvent;
+import rr.state.ShadowThread;
+import rr.state.ShadowVar;
+import rr.tool.Tool;
+import acme.util.Assert;
+import acme.util.Debug;
+import acme.util.option.CommandLine;
+
+@Abbrev("BBC")
+public class BBBEFrontEndTool extends rr.tool.Tool {
+
+	protected static long ts_get_threadLocalStoragePointer(ShadowThread td) { Assert.fail("bad"); return 0;}
+	protected static void ts_set_threadLocalStoragePointer(ShadowThread td, long threadLocalStoragePointer) { Assert.fail("bad");  }
+
+	public BBBEFrontEndTool(String name, Tool next, CommandLine commandLine) {
+		super(name, next, commandLine);
+		BackEnd.init();
+	}
+
+	@Override
+	public void create(NewThreadEvent e) {
+		final long ptr = BackEnd.threadStart(e.getThread().getTid());
+		ts_set_threadLocalStoragePointer(e.getThread(), ptr);
+		if (RRMain.slowMode()) Debug.debugf("bb", "Start thread with id %d has tls %d.", e.getThread().getTid(), ptr);
+		super.create(e);
+	}
+
+	@Override
+	public void stop(ShadowThread st) {
+		BackEnd.threadEnd(ts_get_threadLocalStoragePointer(st));
+		if (RRMain.slowMode()) Debug.debugf("bb", "End thread with id %d has tls %d.", st.getTid(), ts_get_threadLocalStoragePointer(st));
+		super.stop(st);
+	}
+
+	@Override
+	public void access(AccessEvent ae) {
+		if (RRMain.slowMode()) Debug.debugf("bb", "Access %d from thread with id %d and tls %d.", toAddr(ae), ae.getThread().getTid(), ts_get_threadLocalStoragePointer(ae.getThread()));
+		BackEnd.access(ts_get_threadLocalStoragePointer(ae.getThread()), toAddr(ae), ae.getAccessInfo().getId(), (ae.isWrite() ? 1L : 0L));
+		super.access(ae);
+	}
+
+	/**
+	 * Get the target "address" of an access event.
+	 * @param ae
+	 * @return
+	 */
+	private long toAddr(AccessEvent ae) {
+		switch (ae.getKind()) {
+		case ARRAY:
+			return ((long)System.identityHashCode(ae.getTarget()) << 32) | (long)((ArrayAccessEvent)ae).getIndex();
+		case FIELD:
+		case VOLATILE:
+			// (object "address" << 32) | field id
+			return ((long)System.identityHashCode(ae.getTarget()) << 32) | (long)((FieldAccessEvent)ae).getInfo().getField().getId();
+		default:
+			throw new RuntimeException("Bad AccessEvent Kind");
+		}
+	}
+	
+	private static class BugabooShadow implements ShadowVar {
+		private static final BugabooShadow inst = new BugabooShadow();
+
+		@Override
+		public String toString() {
+			return "Bugaboo";
+		}
+
+		public static ShadowVar get() {
+			return inst;
+		}
+	}
+
+	/**
+	 * Force slowpath.
+	 */
+	@Override
+	public ShadowVar makeShadowVar(AccessEvent fae) {
+		return BugabooShadow.get();
+	}
+
+
+	@Override
+	public void fini() {
+		BackEnd.fini();
+	}
+
+}

@@ -1,0 +1,366 @@
+package recon;
+
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
+import java.util.LinkedList;
+import java.util.List;
+
+import rr.annotations.Abbrev;
+import rr.event.AccessEvent;
+import rr.event.NewThreadEvent;
+import rr.meta.AccessInfo;
+import rr.state.ShadowThread;
+import rr.state.ShadowVar;
+import rr.tool.Tool;
+import acme.util.Assert;
+//import acme.util.Debug;
+import acme.util.Util;
+import acme.util.io.XMLWriter;
+import acme.util.option.CommandLine;
+import acme.util.option.CommandLineOption;
+
+@Abbrev("RECON")
+public class ReconTool extends Tool {
+
+	// TODO make these instance.
+	public static final CommandLineOption<Boolean> allOptsOption =
+		CommandLine.makeBoolean("allOpts", false, CommandLineOption.Kind.STABLE, "Turn on all optimizations: -writeMissesOnly -readMissesOnly -racyChecks", new Runnable() {
+			public void run() {
+				readMissesOnlyOption.set(true);
+				writeMissesOnlyOption.set(true);
+				racyCheckOption.set(true);
+			}
+		});
+	public static final CommandLineOption<Boolean> readMissesOnlyOption =
+		CommandLine.makeBoolean("readMissesOnly", false, CommandLineOption.Kind.STABLE, "Only report W->R communication if the read is the first local read since the last remote write. [Lossy -- drops some edges found in full graph.]");
+	public static final CommandLineOption<Boolean> writeMissesOnlyOption =
+		CommandLine.makeBoolean("writeMissesOnly", false, CommandLineOption.Kind.STABLE, "Only set the last writer on the first local write since the last remote write. [Noisy -- reports some spurious edge sources.]xs");
+	public static final CommandLineOption<Boolean> racyCheckOption =
+		CommandLine.makeBoolean("racyChecks", false, CommandLineOption.Kind.STABLE, "Do racy last writer checks.'");
+	public static final CommandLineOption<String> graphDumpFileOption =
+		CommandLine.makeString("graphFile", System.getenv("BBGRAPHFILE"), CommandLineOption.Kind.STABLE, 
+		"Where to dump the graph.  (Defaults to environment variable BBGRAPHFILE.)");
+
+	public enum Timestamp { NONE, MILLIS, NANOS }
+	public static final CommandLineOption<Timestamp> timestampsOption =
+		CommandLine.makeEnumChoice("timestamps", Timestamp.MILLIS, CommandLineOption.Kind.STABLE, "Choose the kind of timestamps.", Timestamp.class);
+	public static final CommandLineOption<Boolean> performanceGraphOption =
+		CommandLine.makeBoolean("performanceGraph", false, CommandLineOption.Kind.STABLE, "Performance graph only.");
+	public static final CommandLineOption<Boolean> noSourceLocOption =
+		CommandLine.makeBoolean("noSourceLocations", false, CommandLineOption.Kind.STABLE, "Do not output file:line after each access in graph.");
+
+	private final Graph graphUnion = new Graph();
+	private final List<Graph> graphs = new LinkedList<Graph>();
+
+	protected static Graph ts_get_graph(ShadowThread td) { Assert.fail("bad"); return null;}
+	protected static void ts_set_graph(ShadowThread td, Graph graph) { Assert.fail("bad");  }
+
+	protected static int ts_get_context(ShadowThread td) { Assert.fail("bad"); return 0;}
+	protected static void ts_set_context(ShadowThread td, int context) { Assert.fail("bad");  }
+
+	protected static void pushContext(ShadowThread st, int op) {
+		synchronized (st) {
+			ts_set_context(st, Context.push(ts_get_context(st), op));
+		}
+	}
+	protected static int readAndPushContext(ShadowThread st, int op) {
+		synchronized (st) {
+			final int old = ts_get_context(st);
+			ts_set_context(st, Context.push(old, op));
+			return old;
+		}
+	}
+
+
+	public ReconTool(String name, Tool next, CommandLine commandLine) {
+		super(name, next, commandLine);
+		commandLine.add(allOptsOption);
+		commandLine.add(writeMissesOnlyOption);
+		commandLine.add(readMissesOnlyOption);
+		commandLine.add(graphDumpFileOption);
+		commandLine.add(timestampsOption);
+		commandLine.add(performanceGraphOption);
+		commandLine.add(noSourceLocOption);
+		commandLine.add(racyCheckOption);
+	}
+
+	@Override
+	public void create(NewThreadEvent e) {
+		final Graph g = new Graph();
+		ts_set_graph(e.getThread(), g);
+		synchronized(graphs) {
+			graphs.add(g);
+		}
+		super.create(e);
+	}
+
+	//	@Override
+	//	public void stop(ShadowThread st) {
+	////		Debug.debug("emptygraphs", st + " done. Graph (size " + ts_get_graph(st).numEdges() + "):");
+	////		ts_get_graph(st).dump(System.err, timestampsOption.get(), !noSourceLocOption.get());
+	////		graphUnion.publish(ts_get_graph(st));
+	//		super.stop(st);
+	//	}
+
+	private long now() {
+		switch (timestampsOption.get()) {
+		case MILLIS:
+			return System.currentTimeMillis();
+		case NANOS:
+			return System.nanoTime();
+		case NONE:
+		default:
+			return 0L;
+		}
+	}
+
+	@Override
+	public void access(AccessEvent ae) {
+		if (!(ae.getOriginalShadow() instanceof ReconShadow)) {
+			super.access(ae);
+			return;
+		}
+		final ReconShadow bs = (ReconShadow)ae.getOriginalShadow();
+		final ShadowThread currentThread = ae.getThread();
+		if (ae.isWrite()) {
+			if (writeMissesOnlyOption.get()) {
+				// UNSOUND EDGE SOURCES case
+				if (racyCheckOption.get()) {
+					// RACY VERSION
+					final ShadowThread lastWriter = bs.lastWriter;
+					if (lastWriter != currentThread) {
+						AccessInfo bsPc = null;
+						int bsContext = 0;
+						long bsTimestamp = 0;
+						final int currentContext;
+						final long currentTimestamp;
+						synchronized (bs) {
+							if (lastWriter != null) {
+								bsContext = bs.context;
+								bsTimestamp = bs.timestamp;
+								bsPc = bs.pc;
+							}
+							synchronized (currentThread) {
+								currentContext = readAndPushContext(currentThread, Context.LOCAL_WRITE);
+								currentTimestamp = now();
+							}
+							bs.write(currentThread, currentContext, ae.getAccessInfo(), currentTimestamp);
+							for (ShadowThread t : bs.users) {
+								pushContext(t, Context.REMOTE_WRITE);
+							}
+							bs.flushUsers();
+						}
+						// Add edge to graph.
+						if (bsPc != null) {
+							ts_get_graph(currentThread).insert(bsPc, bsContext, bsTimestamp,
+									ae.getAccessInfo(), currentContext, currentTimestamp);
+						}
+					}
+				} else {
+					// SAFER VERSION
+					AccessInfo bsPc = null;
+					int bsContext = 0;
+					long bsTimestamp = 0;
+					int currentContext = 0;
+					long currentTimestamp = 0;
+					final ShadowThread lastWriter;
+					synchronized (bs) {
+						lastWriter = bs.lastWriter;
+						if (lastWriter != currentThread) {
+							if (lastWriter != null) {
+								bsContext = bs.context;
+								bsTimestamp = bs.timestamp;
+								bsPc = bs.pc;
+							}
+							synchronized (currentThread) {
+								currentContext = readAndPushContext(currentThread, Context.LOCAL_WRITE);
+								currentTimestamp = now();
+							}
+							bs.write(currentThread, currentContext, ae.getAccessInfo(), currentTimestamp);
+							for (ShadowThread t : bs.users) {
+								pushContext(t, Context.REMOTE_WRITE);
+							}
+							bs.flushUsers();
+						}
+					}					
+					// Add edge to graph.
+					if (bsPc != null) {
+						ts_get_graph(currentThread).insert(bsPc, bsContext, bsTimestamp,
+								ae.getAccessInfo(), currentContext, currentTimestamp);
+					}
+				}
+			} else {
+				// SOUND EDGE SOURCES case:
+				// Memory write
+				AccessInfo bsPc = null;
+				int bsContext = 0;
+				long bsTimestamp = 0;
+				final int currentContext;
+				final long currentTimestamp;
+				final ShadowThread lastWriter;
+				synchronized (bs) {
+					lastWriter = bs.lastWriter;
+					if (lastWriter != currentThread) {
+						if (lastWriter != null) {
+							bsContext = bs.context;
+							bsTimestamp = bs.timestamp;
+							bsPc = bs.pc;
+						}
+						synchronized (currentThread) {
+							currentContext = readAndPushContext(currentThread, Context.LOCAL_WRITE);
+							currentTimestamp = now();
+						}
+						bs.write(currentThread, currentContext, ae.getAccessInfo(), currentTimestamp);
+						for (ShadowThread t : bs.users) {
+							pushContext(t, Context.REMOTE_WRITE);
+						}
+						bs.flushUsers();
+					} else {
+						synchronized (currentThread) {
+							currentContext = ts_get_context(currentThread);
+							currentTimestamp = now();
+						}
+						bs.localWrite(currentContext, ae.getAccessInfo(), currentTimestamp);
+					}
+				}
+				if (bsPc != null) {
+					// Add edge to graph.
+					ts_get_graph(currentThread).insert(bsPc, bsContext, bsTimestamp,
+							ae.getAccessInfo(), currentContext, currentTimestamp);
+				}
+			}
+		} else {
+			// Memory read
+			if (racyCheckOption.get()) {
+				// RACY VERSION
+				final ShadowThread lastWriter = bs.lastWriter;
+				if (lastWriter != currentThread && (!readMissesOnlyOption.get() || !bs.users.contains(currentThread))) {
+					// Add edge to graph.
+					AccessInfo bsPc = null;
+					int bsContext = 0;
+					long bsTimestamp = 0;
+					final int currentContext;
+					final long currentTimestamp;
+					synchronized (bs) {
+						synchronized (currentThread) {
+							currentContext = readAndPushContext(currentThread, Context.LOCAL_READ);
+							currentTimestamp = now();
+						}
+						bs.users.add(currentThread);
+						if (lastWriter != null) {
+							pushContext(lastWriter, Context.REMOTE_READ);
+							bsContext = bs.context;
+							bsTimestamp = bs.timestamp;
+							bsPc = bs.pc;
+						}
+					}
+					if (bsPc != null) {
+						ts_get_graph(currentThread).insert(bsPc, bsContext, bsTimestamp,
+								ae.getAccessInfo(), currentContext, currentTimestamp);
+					}
+				}
+			} else {
+				// SAFE VERSION
+				AccessInfo bsPc = null;
+				int bsContext = 0;
+				long bsTimestamp = 0;
+				int currentContext = 0;
+				long currentTimestamp = 0;
+				final ShadowThread lastWriter;
+				synchronized (bs) {
+					lastWriter = bs.lastWriter;
+					if (lastWriter != currentThread && (!readMissesOnlyOption.get() || !bs.users.contains(currentThread))) {
+						synchronized (currentThread) {
+							currentContext = readAndPushContext(currentThread, Context.LOCAL_READ);
+							currentTimestamp = now();
+						}
+						bs.users.add(currentThread);
+						if (lastWriter != null) {
+							pushContext(lastWriter, Context.REMOTE_READ);
+							bsContext = bs.context;
+							bsTimestamp = bs.timestamp;
+							bsPc = bs.pc;
+						}
+					}
+				}
+				if (bsPc != null) {
+					// Add edge to graph.
+					ts_get_graph(currentThread).insert(bsPc, bsContext, bsTimestamp,
+							ae.getAccessInfo(), currentContext, currentTimestamp);
+				}
+			}
+		}
+	}
+
+	public static boolean readFastPath(ShadowVar sv, ShadowThread st) {
+		if (sv instanceof ReconShadow) {
+			final ReconShadow bs = (ReconShadow)sv;
+			if (racyCheckOption.get()) {
+				return ! (bs.lastWriter != st && (!readMissesOnlyOption.get() || !bs.users.contains(st)));
+			} else {
+				synchronized (bs) {
+					return ! (bs.lastWriter != st && (!readMissesOnlyOption.get() || !bs.users.contains(st)));					
+				}
+			}
+		} else {
+			return true;
+		}
+	}
+	public static boolean writeFastPath(ShadowVar sv, ShadowThread st) {
+		if (writeMissesOnlyOption.get()) {
+			if (sv instanceof ReconShadow) {
+				final ReconShadow bs = (ReconShadow)sv;
+				if (racyCheckOption.get()) {
+					return bs.lastWriter == st;
+				} else {
+					synchronized (bs) {
+						return bs.lastWriter == st;
+					}
+				}
+			} else {
+				return true;
+			}
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public ShadowVar makeShadowVar(AccessEvent fae) {
+		return new ReconShadow();
+	}
+
+
+	@Override
+	public void printXML(XMLWriter xml) {
+		synchronized (graphs) {
+			for (Graph g : graphs) {
+				synchronized (g) {
+					graphUnion.publish(g);
+				}
+			}
+		}
+		final String path = graphDumpFileOption.get();
+		PrintStream graphOut;
+		boolean close = false;
+		if (path != null && !path.isEmpty()) {
+			try {
+				graphOut = new PrintStream(new FileOutputStream(path));
+				close = true;
+			} catch (FileNotFoundException e) {
+				Util.error("No graph file specified, using System.err");
+				graphOut = System.err;
+			}
+		} else {
+			Util.error("No graph file specified, using System.err");
+			graphOut = System.err;
+		}
+		graphUnion.dump(graphOut, timestampsOption.get() != Timestamp.NONE, !noSourceLocOption.get());
+		if (close) {
+			graphOut.close();
+		}
+
+	}
+
+}

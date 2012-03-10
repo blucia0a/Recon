@@ -1,0 +1,107 @@
+-<RECON HEADER>-------------------------------------------------------------
+Recon - A tool for finding and understanding concurrency errors.
+
+Written by Brandon Lucia   2009-2011
+           Benjamin Wood   2010-2011
+           Julian Knutsen  2010
+
+Recon was written at the University of Washington.  If you are using this
+software, you must agree to the terms in our license, which is available at:
+
+http://cs.washington.edu/homes/blucia0a/recon.html
+-</RECON HEADER>------------------------------------------------------------
+
+
+ReconCollect-C - A tool for collecting context-aware shared-memory communication
+                 graphs from executions of concurrent C programs.
+
+===Overview===
+ReconCollect-C is part of Recon.  Recon collect is a collection of
+instrumentation code that can be added to your program by an instrumentation
+tool to collect Context-Aware Communication Graphs from executions of your
+program.
+
+
+===Library Dependences===
+
+---Pin---
+This version of ReconCollect-C was designed to be easy to use with Pin, Intel's
+binary instrumentation tool.  The default build is a pintool.  More information
+on obtaining and using Pin is available on Intel's Pin website at pintool.org.
+
+---JSON-C---
+This version of ReconCollect-C is dependent on a json processing library.  
+You can get libjson at http://metaparadigm.com/json-c/.  Recon was 
+developed using json-c ver. 0.9.
+
+
+===Building ReconCollect-C===
+To build ReconCollect-C:
+
+1)Be sure Pin and json-c are installed
+2)Set the paths to Pin and json-c at the top of the Makefile
+3)In this directory, type make; This will build a pintool binary
+
+Customizing your build:
+
+There are several build options available, configured via the environment at
+build time.   The build options control the optimization that are enabled in
+the build.  Details of these optimizations are explained fully in our PLDI 2011
+paper, available at http://cs.washington.edu/homes/blucia0a/recon.html
+
+FR: The FR option says whether or not to turn on the "Track First-Reads-Only"
+    optimization. 
+
+FW: The FW option says whether or not to turn on the "Track First-Writes-Only"
+    optimization.
+
+RACY: The RACY option says whether or not to turn on the "Racy Updates" 
+      optimization.
+
+So for example, if you want to build with the First Read optimization, and the
+RACY updates optimization, you'd use:
+
+FR=1 RACY=1 make
+
+By default, all three optimizations are disabled.  You need to 'make clean'
+between rebuilds that change which optimizations are enabled.
+
+The length of the communication context is configurable.  By default the length
+is 5.  The context is stored as a sequence of two-bit codes.  The details of
+this coding scheme is in bug_types.h and Context.h
+
+In the interest of performance, the context length is a compile-time parameter,
+not a runtime parameter.  This makes changing it a little clumsy.  To change
+the context, you must specify CONTEXT_SIZE=<size> and CONTEXT_MASK=<mask> in
+the environment before running 'make'.  The mask should be a bit mask that
+masks off 2 * CONTEXT_SIZE bits.
+
+For example, the default is CONTEXT_SIZE=5 and CONTEXT_MASK=0x3FF.  0x3FF
+corresponds to 1111111111b, which represents 5 two-bit context entries.
+To specify CONTEXT_SIZE=10 you would need to set CONTEXT_MASK=0xFFFFF.
+
+It is a major TODO to make this work less clumsily.
+
+
+===Testing Your Build===
+You can test your build with make test.  You must specify a recon collector
+binary to test using the COLL environment variable. 
+
+For example:
+
+COLL=./recon.NOFR.NOFW.NORACY make test
+
+
+
+===Running ReconCollect-C===
+If you choose to use our Pin-compatible frontend (the default frontend), running
+ReconCollect-C is easy.  Assuming you've built a version of ReconCollect-C with
+no optimizations enabled:
+
+RECONGRAPHFILE=/file/to/store/graph pin -t /path/to/ReconCollect/ReconCollect.NOFR.NOFW.NORACY.so -- /program/to/run
+
+This will run your program and dump a communication graph in json format to /file/to/store/graphE<execname>P<pid>
+
+By default, the tool does not instrument stack accesses, under the assumption
+that stacks are rarely shared.  You can make the tool instrument stack accesses
+by specifying the -stack option.

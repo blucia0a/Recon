@@ -1,0 +1,44 @@
+<project name="Recon" basedir="." default="build">
+
+	<dirname property="recon.basedir" file="${ant.file.Recon}" />
+	
+	<property environment="env" />
+
+	<property name="recon.srcdir" value="${recon.basedir}/src" />
+	<property name="recon.classdir" value="${recon.basedir}/bin" />
+
+	<property name="recon.toolclass" value="recon.ReconTool" />
+	<property name="recon.backendclass" value="recon.BackEnd" />
+
+	<path id="rr.classpath">
+		<pathelement location="${env.RR_HOME}/classes" />
+		<pathelement location="${env.RR_HOME}/../AcmeUtils/classes" />
+	</path>
+
+	<target name="clean">
+		<delete dir="${recon.classdir}" />
+		<delete file="${recon.basedir}/setup.sh" />
+	</target>
+
+	<target name="build" depends="tool,abbrev,setup" />
+
+
+	<target name="tool">
+		<mkdir dir="${recon.classdir}" />
+		<javac srcdir="${recon.srcdir}" destdir="${recon.classdir}" classpathref="rr.classpath" />
+	</target>
+
+	<target name="abbrev">
+		<apt factorypathref="rr.classpath" compile="false" classpathref="rr.classpath" factory="rr.annotations.BuildToolList" srcdir="${recon.srcdir}" />
+		<move file="rrtools.properties" todir="${recon.classdir}" />
+	</target>
+	
+	<target name="setup">
+		<echo file="${recon.basedir}/setup.sh">
+export RR_TOOLPATH=$RR_TOOLPATH:${recon.classdir}
+		</echo>
+		<echo message="source ${recon.basedir}/setup.sh to setup your environment to use the recon tool" />
+	</target>
+
+
+</project>

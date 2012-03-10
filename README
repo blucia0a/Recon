@@ -1,0 +1,159 @@
+-<RECON HEADER>-------------------------------------------------------------
+Recon - A tool for finding and understanding concurrency errors.
+
+Written by Brandon Lucia   2009-2011
+           Benjamin Wood   2010-2011
+           Julian Knutsen  2010
+
+Recon was written at the University of Washington.  BEFORE using this
+software, you MUST agree to the terms in our license, which is available at:
+
+http://cs.washington.edu/homes/blucia0a/recon.html
+
+-</RECON HEADER>------------------------------------------------------------
+
+
+===Overview of Recon===
+
+Recon is a tool for helping you understand bugs in multithreaded programs.  The process starts when you get a bug report.  Once you can repro the bug, you run
+your program a bunch of times with our tool.  The tool collects information
+about how threads in the program communicated with one another.  You (or a 
+script) watch the program run, and after each run, you decide if the bug
+occurred, or didn't occur.  You file output from Recon into a 'buggy' directory
+if the bug happened, and a 'nonbuggy' directory if the bug didn't happen.
+
+After you have collected information from a dozen or a couple dozen executions,
+you can use Recon to convert that information into *Reconstructions*.  The
+reconstructions Recon produces show you a short, focused snippet of the
+program's execution.  The operations included in the reconstruction are ones
+that our statistical ranking algorithm determined are related to the bug.  The
+output shows up in shiny pdf files, with one reconstruction per pdf.  If the
+bug you are fighting was really a concurrency problem, you will probably see
+its cause in one of the top ranked reconstructions.
+
+
+===Introducing Recon===
+Recon has three parts:
+*ReconCollect - instrumentation code that can be added to your program by an 
+                instrumenation tool to collect context-aware communication
+                graphs from program executions
+
+*ReconRank    - a set of scripts that process collections of context-aware
+                communication graphs collected by ReconCollect to produce
+                and rank *reconstructions*.  Reconstructions provide 
+                information about what went wrong when your program 
+                crashed.
+
+*ReconDot     - a script to visualize ReconRank's output.
+                
+
+Information about how to build ReconCollect for C can be found in ReconCollect/C/README.  ReconCollect for C can be run with Intel's Pin binary instrumentation infrastructure (http://pintool.org).
+
+(Terse) information about how to build ReconCollect for Java can be found in
+ReconCollect/Java.  ReconCollect for Java can be run with RoadRunner, Cormac
+Flanagan and Steven N. Freund's wonderful Java instrumentation framework
+(http://github.com/stephenfreund/RoadRunner).
+
+ReconRank requires a recent version of perl to be installed.  ReconRank emits
+output in JavaScript Object Notation (json) format.  ReconDot emits pdf files
+generated from ReconRank's json output.
+
+===Getting Started===
+
+-Step 0)
+  If you are debugging C/C++ code, download and install Pin.
+  If you are debugging Java code, download and install RoadRunner.
+
+-Step 1)
+  Build ReconCollect.  For information on how to do that, look at the
+  README files in ReconCollect/C and ReconCollect/Java.
+
+  Set up your environment.  There is a file called reconrc -- inside
+  there are a few important environment variables to set so that
+  Recon knows where all your programs are (Pin, libjson, etc).
+  Edit this file to match your setup, and then run "source reconrc"
+  to push all the things you set up into your environment.  You 
+  should do this before using Recon each time.
+
+-Step 2)
+  Use Recon!  Read the following tutorial for a walkthrough of how
+  to use Recon, from start to finish.
+
+===Tutorial===
+  ---The Test Program: Crasher---
+  To do this, cd to Tests/Crasher, and type 'make'.  This will build
+  Crasher, a simple test program with an atomicity bug in it.  If 
+  you just run the program a few times, it will crash.  The bug is
+  that at Crasher.c line 17, one thread sets a shared pointer to NULL.  
+  Another thread, at line 48 checks that the pointer is not NULL, 
+  and then at line 54 dereferences the pointer.  If the assignment
+  at line 17 happens between the check and the dereference, the 
+  program will crash.
+
+  ---Running Crasher---
+  Modify the variables at the top of Tests/Crasher/test.sh to point to your
+  installation of Pin.  Then, running test.sh will run Crasher in ReconCollect.
+  You will notice that in the Tests/Crasher/graphs directory an output
+  file has appeared in either the 'buggy' or 'nonbuggy' subdirectory, depending
+  on whether the program failed or not.
+
+  ---Collecting Graphs for Crasher---
+  You can run test.sh in a loop -- "for i in `seq 1 100`; do ./test.sh; done"
+  Doing that will populate the 'buggy' and 'nonbuggy' subdirectories with
+  a set of output files.  These files represent the communication that
+  took place when the program was executing.  
+
+  ---Generating Reconstructions for Crasher---
+  Now that you have a set of buggy and nonbuggy graphs, you can build
+  reconstructions that help you understand the bug.  To do so, you
+  need to run ReconRank.pl.  There are two options to ReconRank
+  that you need to specify.
+
+  -executable=<path to Crasher>
+  -graphsdir=<path to directory containing 'buggy' and 'nonbuggy' subdirs>
+ 
+  Running ReconRank will load the graphs from the buggy and nonbuggy
+  directories, and then dump a set of rank-ordered reconstructions to
+  standard out.  You probably want to redirect that output to a file.
+  These reconstructions contain information about Crasher's bug!  If
+  you look at the json in the output file, you will see the prefix,
+  body, suffix, source, and sink of each reconstruction that Recon
+  generated.  They are ordered in the file from top to bottom by
+  the likelihood that they represent the cause of the error.
+
+  ---[Optional] Generating Graphical Output---
+  To convert the ugly json output to beautiful GraphViz Dot 
+  (http://www.graphviz.org/) output, you can use ReconDot.pl.
+  To use ReconDot.pl, you can redirect the output of ReconRank.pl
+  directly to ReconDot.pl, or you can cat a file containing
+  ReconRank.pl output to ReconDot.  ReconDot also takes one 
+  argument.  This argument is the directory in which to create
+  the pdf files containing the graphical version of the reconstructions.
+  If the argument is unspecified, the pdf files are created in the 
+  current directory.
+
+===Sample Output===
+Recon comes with sample output from each step of this tutorial.  The sample
+output is in Tests/Crasher/sampleOutput.  
+
+The 'graphs' subdirectory contains a 'buggy' and 'nonbuggy' subdirectory, each
+containing context-aware communication graphs from runs of Crasher.  These were
+collected by running test.sh.  
+
+Crasher.reconRank.json contains ReconRank's output, after being run on the graphs subdirectory.
+
+The 'dot' subdirectory contains a numbered set of .pdf files.  Each contains
+one reconstruction.  graph3.pdf very clearly shows the error in Crasher -- The
+prefix contains Crasher.c:48.  The source is Crasher.c:17.  The sink is
+Crasher.c:54.  This sequence of events is precisely the sequence that causes
+the failure.
+
+===Tips on Collecting Graphs===
+To help you collect graphs there is a script called test.sh.  The idea is that
+it runs your program and puts the output in a special file.  You can pass a
+failure detection script to test.sh, and test.sh will run that script on the
+output file.  Your script should be written so that it prints a single "1" to
+the screen if the program's output indicates no failure occurred, and should
+print nothing otherwise.
+
+

@@ -1,0 +1,12 @@
+package bugaboo;
+
+public class BackEnd {
+	static {
+		System.load(System.getenv("JBBBE"));
+	}
+	public static native long threadStart(int tid);
+	public static native void threadEnd(long threadLocalStoragePointer);
+	public static native void access(long threadLocalStoragePointer, long addr, long pc, long isWrite);
+	public static native void init();
+	public static native void fini();
+}
