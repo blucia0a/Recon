@@ -1,0 +1,22 @@
+-<RECON HEADER>-------------------------------------------------------------
+Recon - A tool for finding and understanding concurrency errors.
+
+Written by Brandon Lucia   2009-2011
+           Benjamin Wood   2010-2011
+           Julian Knutsen  2010
+
+Recon was written at the University of Washington.  BEFORE using this
+software, you MUST agree to the terms in our license, which is available at:
+
+http://cs.washington.edu/homes/blucia0a/recon.html
+
+Please visit the above URL so we know you're using our code: It's exciting to
+know when we have new users! =)
+
+-</RECON HEADER>------------------------------------------------------------
+
+The Ext_Contrib directory contains externally contributed tools.  These tools
+are not officially part of the Recon release.  As such, these tools are
+licensed independently. Tools in this directory may not have been written by
+any of the above people; Credit to the authors will be indicated as
+appropriate.   
