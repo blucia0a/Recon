@@ -62,68 +62,68 @@ sub GetNextEdgeFromFile(){
   my $FILE = shift;
   my $java = shift;
 
-  if($java == 1){
-
-    my $srcLine = '';
-    $srcLine = readline($FILE);
-    
-    if(!defined $srcLine || ($java == 1 && $srcLine =~ /Size of Graph/)){
-      return undef;
-    }
-  
-  
-    
-    $srcLine =~ s/\]//;
-    $srcLine =~ s/\[//;
-    $srcLine =~ s/Source:/Source/;
-    $srcLine =~ s/\(//;
-    $srcLine =~ s/\)//;
-    my ($srcjunk,$srcpc,$srcts,@srccontext) = split /\s+/, $srcLine;
-    if($java == 1){
-      my $codepoint = pop @srccontext;
-      my ($file,$line) = split /:/, $codepoint;
-      $graph->{'code'}->{$srcpc}->{'file'} = $file;
-      $graph->{'code'}->{$srcpc}->{'line'} = $line;
-      $graph->{'code'}->{$srcpc}->{'func'} = "unknown";
-    }
-    my $srcctx = join '',@srccontext;
-    
-    
-    my $sinkLine = readline($FILE);
-    if(!defined $sinkLine){
-      return undef;
-    }
-  
-   
-    $sinkLine =~ s/\]//;
-    $sinkLine =~ s/\[//;
-    $sinkLine =~ s/Sink:/Sink/;
-    $sinkLine =~ s/\(//;
-    $sinkLine =~ s/\)//;
-    #$sinkLine =~ s/Sink :/Sink/;
-    my ($sinkjunk,$sinkpc,$sinkts,@sinkcontext) = split /\s+/, $sinkLine;
-    if($java == 1){
-      my $codepoint = pop @sinkcontext;
-      my ($file,$line) = split /:/, $codepoint;
-      $graph->{'code'}->{$sinkpc}->{'file'} = $file;
-      $graph->{'code'}->{$sinkpc}->{'line'} = $line;
-      $graph->{'code'}->{$sinkpc}->{'func'} = "unknown";
-    }
-    my $sinkctx = join '',@sinkcontext;
-   
-    my $edge = { 'src' => $srcpc,
-                 'sink' => $sinkpc,
-                 'srcctx' => $srcctx,
-                 'sinkctx' => $sinkctx,
-                 'srcts' => $srcts,
-                 'sinkts' => $sinkts
-               };
-    return $edge;
-  }else{
+#  if($java == 1){
+#
+#    my $srcLine = '';
+#    $srcLine = readline($FILE);
+#    
+#    if(!defined $srcLine || ($java == 1 && $srcLine =~ /Size of Graph/)){
+#      return undef;
+#    }
+#  
+#  
+#    
+#    $srcLine =~ s/\]//;
+#    $srcLine =~ s/\[//;
+#    $srcLine =~ s/Source:/Source/;
+#    $srcLine =~ s/\(//;
+#    $srcLine =~ s/\)//;
+#    my ($srcjunk,$srcpc,$srcts,@srccontext) = split /\s+/, $srcLine;
+#    if($java == 1){
+#      my $codepoint = pop @srccontext;
+#      my ($file,$line) = split /:/, $codepoint;
+#      $graph->{'code'}->{$srcpc}->{'file'} = $file;
+#      $graph->{'code'}->{$srcpc}->{'line'} = $line;
+#      $graph->{'code'}->{$srcpc}->{'func'} = "unknown";
+#    }
+#    my $srcctx = join '',@srccontext;
+#    
+#    
+#    my $sinkLine = readline($FILE);
+#    if(!defined $sinkLine){
+#      return undef;
+#    }
+#  
+#   
+#    $sinkLine =~ s/\]//;
+#    $sinkLine =~ s/\[//;
+#    $sinkLine =~ s/Sink:/Sink/;
+#    $sinkLine =~ s/\(//;
+#    $sinkLine =~ s/\)//;
+#    #$sinkLine =~ s/Sink :/Sink/;
+#    my ($sinkjunk,$sinkpc,$sinkts,@sinkcontext) = split /\s+/, $sinkLine;
+#    if($java == 1){
+#      my $codepoint = pop @sinkcontext;
+#      my ($file,$line) = split /:/, $codepoint;
+#      $graph->{'code'}->{$sinkpc}->{'file'} = $file;
+#      $graph->{'code'}->{$sinkpc}->{'line'} = $line;
+#      $graph->{'code'}->{$sinkpc}->{'func'} = "unknown";
+#    }
+#    my $sinkctx = join '',@sinkcontext;
+#   
+#    my $edge = { 'src' => $srcpc,
+#                 'sink' => $sinkpc,
+#                 'srcctx' => $srcctx,
+#                 'sinkctx' => $sinkctx,
+#                 'srcts' => $srcts,
+#                 'sinkts' => $sinkts
+#               };
+#    return $edge;
+#  }else{
 
     #NOT JAVA
     my $line = readline($FILE);
-    if(!defined $line){
+    if(!defined $line || !($line =~ m/src/) ){
       return;
     }
     utf8::upgrade($line);
@@ -141,9 +141,33 @@ sub GetNextEdgeFromFile(){
                 'srcts' => $eref->{$k}->{"src"}->{"T"},
                 'sinkts' => $eref->{$k}->{"sink"}->{"T"}
               };
+
+      if( defined $eref->{$k}->{"srcinfo"} ){
+
+        my $thisid = $eref->{$k}->{"srcinfo"}->{"id"};
+        my $thisfileline = $eref->{$k}->{"srcinfo"}->{"code"};
+
+        my ($thisfile,$thisline) = split /:/, $thisfileline;
+        $graph->{'code'}->{$thisid}->{'file'} = $thisfile;
+        $graph->{'code'}->{$thisid}->{'line'} = $thisline;
+
+      }
+
+      if( defined $eref->{$k}->{"sinkinfo"} ){
+
+        my $thisid = $eref->{$k}->{"sinkinfo"}->{"id"};
+        my $thisfileline = $eref->{$k}->{"sinkinfo"}->{"code"};
+
+        my ($thisfile,$thisline) = split /:/, $thisfileline;
+        $graph->{'code'}->{$thisid}->{'file'} = $thisfile;
+        $graph->{'code'}->{$thisid}->{'line'} = $thisline;
+
+      }
+
     } 
+
     return $edge;
-  }
+#  }
 
 }
 
@@ -578,13 +602,25 @@ sub codeInfoIfAvailable(){
   my $graph = shift;
   my $pc = shift;
 
+
   if(!defined $graph->{'code'}->{$pc}->{'file'}){
-    my ($func,$file,$line) = ReconUtil::addr2lineCall($graph->{'executable'},$pc); 
-    $graph->{'code'}->{$pc}->{'func'} = $func;
-    my $sfile = `basename $file`;
-    chomp $sfile;
-    $graph->{'code'}->{$pc}->{'file'} = $sfile;
-    $graph->{'code'}->{$pc}->{'line'} = $line;
+
+    if($graph->{'executable'} eq ""){
+
+      $graph->{'code'}->{$pc}->{'file'} = "Unkown Location";
+      $graph->{'code'}->{$pc}->{'line'} = 0;
+
+    }else{
+
+      my ($func,$file,$line) = ReconUtil::addr2lineCall($graph->{'executable'},$pc); 
+      $graph->{'code'}->{$pc}->{'func'} = $func;
+      my $sfile = `basename $file`;
+      chomp $sfile;
+      $graph->{'code'}->{$pc}->{'file'} = $sfile;
+      $graph->{'code'}->{$pc}->{'line'} = $line;
+
+    }
+
   }
 
   if($graph->{'code'}->{$pc}->{'file'} =~ /\?\?/){

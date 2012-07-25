@@ -193,7 +193,7 @@ public class Graph implements Iterable<Graph.Edge> {
                 //{ "t2e0": { "src": { "I": "4197327", "C": 28, "T": "8905665823624906" }, "sink": { "I": "4197212", "C": 0, "T": "8905665825633031" } } }
 		for (Edge e : this) {
 
-                        graphOut.printf("{ \"edge\": { \"src\": { \"I\": \"%x\", \"C\": %d",graphSize, e.source.access.getId(), e.source.context);
+                        graphOut.printf("{ \"edge\": { \"src\": { \"I\": \"%x\", \"C\": %d", e.source.access.getId(), e.source.context);
                         if(timestamps){
 
                         	graphOut.printf(", \"T\": \"%d\" },", e.source.timestamp);
@@ -204,7 +204,7 @@ public class Graph implements Iterable<Graph.Edge> {
 
                         }
                         
-                        graphOut.printf("{ \"edge%d\": { \"src\": { \"I\": \"%x\", \"C\": %d",graphSize, e.sink.access.getId(), e.sink.context);
+                        graphOut.printf(" \"sink\": { \"I\": \"%x\", \"C\": %d", e.sink.access.getId(), e.sink.context);
                         if(timestamps){
 
                         	graphOut.printf(", \"T\": \"%d\" },", e.sink.timestamp);
@@ -218,17 +218,16 @@ public class Graph implements Iterable<Graph.Edge> {
 			
 			if (sourceLoc) {
 
-				graphOut.print(" \"srcinfo\": { \"id\" : %x, \"code\" : \"" + e.source.access.getLoc() + "\"}, ",e.source.access.getId());
+				graphOut.printf(" \"srcinfo\": { \"id\" : %x, \"code\" : \"" + e.source.access.getLoc() + "\"}, ",e.source.access.getId());
 			}
 
-			graphOut.println();
 
 			if (sourceLoc) {
 
-				graphOut.print(" \"sinkinfo\": { \"id\" : %x, \"code\" : \"" + e.source.access.getLoc() + "\"} ",e.source.access.getId());
+				graphOut.printf(" \"sinkinfo\": { \"id\" : %x, \"code\" : \"" + e.source.access.getLoc() + "\"} ",e.source.access.getId());
 			}
 
-                        graphOut.printf(" }");
+                        graphOut.printf(" } }");
 
 			graphOut.println();
 		}
