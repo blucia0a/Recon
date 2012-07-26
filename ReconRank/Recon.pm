@@ -132,8 +132,8 @@ sub GetNextEdgeFromFile(){
     my $edge;
     my $k;
     foreach $k(keys %{$eref}){
-      my $hsrc  = sprintf("%x",$eref->{$k}->{"src"}->{"I"});
-      my $hsink = sprintf("%x",$eref->{$k}->{"sink"}->{"I"});
+      my $hsrc  = sprintf("%s",$eref->{$k}->{"src"}->{"I"});
+      my $hsink = sprintf("%s",$eref->{$k}->{"sink"}->{"I"});
       $edge = { 'src' => $hsrc,
                 'sink' => $hsink,
                 'srcctx' => $eref->{$k}->{"src"}->{"C"},

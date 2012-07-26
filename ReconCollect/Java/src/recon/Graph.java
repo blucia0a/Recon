@@ -218,13 +218,13 @@ public class Graph implements Iterable<Graph.Edge> {
 			
 			if (sourceLoc) {
 
-				graphOut.printf(" \"srcinfo\": { \"id\" : %x, \"code\" : \"" + e.source.access.getLoc() + "\"}, ",e.source.access.getId());
+				graphOut.printf(" \"srcinfo\": { \"id\" : \"%x\", \"code\" : \"" + e.source.access.getLoc() + "\"}, ",e.source.access.getId());
 			}
 
 
 			if (sourceLoc) {
 
-				graphOut.printf(" \"sinkinfo\": { \"id\" : %x, \"code\" : \"" + e.source.access.getLoc() + "\"} ",e.source.access.getId());
+				graphOut.printf(" \"sinkinfo\": { \"id\" : \"%x\", \"code\" : \"" + e.source.access.getLoc() + "\"} ",e.source.access.getId());
 			}
 
                         graphOut.printf(" } }");
